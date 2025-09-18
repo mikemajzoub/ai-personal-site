@@ -218,11 +218,11 @@
                 
                 // Calculate responsive padding based on window dimensions
                 const paddingX = Math.max(32, width * 0.05); // Minimum 32px, or 5% of width
-                const paddingY = Math.max(32, height * 0.05); // Minimum 32px, or 5% of height
+                const paddingY = Math.max(16, width * 0.02); // Smaller vertical padding: 2% of width, minimum 16px
                 
-                // Calculate word width based on screen size
-                const wordWidth = Math.min(150, width * 0.15); // Responsive word width
-                const totalWidthForLayers = width - 2 * paddingX - wordWidth;
+                // Calculate spacing for layers - include space for emoji on the right
+                const emojiSpace = Math.max(60, width * 0.1); // Space reserved for emoji
+                const totalWidthForLayers = width - paddingX - emojiSpace;
                 const layerSpacing = totalWidthForLayers / (layerNodeCounts.length - 1);
                 
                 // Create nodes for all layers except the last (output) one
@@ -240,9 +240,10 @@
                     layers.push(layer);
                 }
 
-                // Create the single output node and place it to the right of the last layer
+                // Create the single output node and place it in the reserved emoji space
                 const finalX = paddingX + (layerNodeCounts.length - 2) * layerSpacing;
-                outputNode = new TextNode(finalX + wordWidth, height / 2);
+                const emojiX = width - emojiSpace + (emojiSpace * 0.3); // Position within emoji space
+                outputNode = new TextNode(emojiX, height / 2);
 
 
                 // Create connections between layers

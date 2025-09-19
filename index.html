@@ -173,70 +173,241 @@
             ctx.fillText('Canvas fallback active', 50, 50);
         }
 
+        /**
+         * Initialize the neural network animation using PixiJS
+         * @param {PIXI.Application} app - The PixiJS application instance
+         */
         function initPixiAnimation(app) {
+            // ============================================================================
+            // CONFIGURATION AND CONSTANTS
+            // ============================================================================
+            const CONFIG = {
+                // Network structure
+                LAYER_COUNTS: {
+                    DESKTOP: [16, 16, 16, 16, 1],
+                    TABLET: [12, 12, 12, 12, 1],
+                    MOBILE: [8, 8, 8, 8, 1]
+                },
+                NODE_RADIUS: {
+                    DESKTOP: 2,
+                    TABLET: 1.8,
+                    MOBILE: 1.5
+                },
+                // Animation parameters
+                CONNECTION_SPEED: {
+                    BASE: 0.02,
+                    VARIANCE: 0.008
+                },
+                NODE_THICKNESS: {
+                    MIN: 0.2,
+                    MAX: 1.0
+                },
+                // Layout
+                BREAKPOINTS: {
+                    MOBILE: 768,
+                    TABLET: 1024
+                },
+                PADDING: {
+                    MIN_X: 32,
+                    MIN_Y: 16,
+                    RATIO_X: 0.05,
+                    RATIO_Y: 0.02
+                },
+                EMOJI_SPACE: {
+                    MIN: 60,
+                    RATIO: 0.1,
+                    POSITION: 0.3
+                },
+                // Timing
+                PAUSE_DURATION: 750,
+                EMOJI_DISPLAY_TIME: 1000,
+                EMOJI_FADE_TIME: 1000,
+                // Text styling
+                EMOJI_FONT_SIZE: 16,
+                EMOJI_PADDING: 8,
+                // Colors
+                NODE_COLOR: 0x333333,
+                HUE_RANGE: 240
+            };
 
-            let width, height;
-            let layers = [];
-            let layerNodeCounts = [16, 16, 16, 16, 1];
-            let nodeRadius = 2;
-            const outputWords = [
+            const EMOJI_LIST = [
                 "😀", "😃", "😄", "😁", "😆",
                 "😅", "😂", "🤣", "😊", "😇",
                 "😉", "😋", "😌", "🤗", "🥰",
                 "🤩", "🥳", "😎", "🤪", "🥳"
             ];
-            let outputNode;
-            let currentWordIndex = -1;
 
-            let currentActiveLayerIndex = 0;
-            let connectionAnimations = [];
-            let pauseUntil = 0;
-            const PAUSE_DURATION = 750;
-            let hasAnimationCompleted = false;
+            // ============================================================================
+            // STATE VARIABLES
+            // ============================================================================
+            let width, height;                      // Current viewport dimensions
+            let layers = [];                        // Array of neural network layers
+            let layerNodeCounts = CONFIG.LAYER_COUNTS.DESKTOP;  // Current layer configuration
+            let nodeRadius = CONFIG.NODE_RADIUS.DESKTOP;        // Current node size
+            let outputNode;                         // The emoji output node
+            let currentWordIndex = -1;              // Current emoji index
+            let currentActiveLayerIndex = 0;        // Currently animating layer
+            let connectionAnimations = [];          // All connection animations
+            let pauseUntil = 0;                     // Pause end timestamp
+            let hasAnimationCompleted = false;      // Animation cycle completion flag
             
+            // ============================================================================
+            // UTILITY FUNCTIONS
+            // ============================================================================
+            const Utils = {
+                /**
+                 * Generate a random connection speed within the configured range
+                 */
+                generateConnectionSpeed() {
+                    return CONFIG.CONNECTION_SPEED.BASE + Math.random() * CONFIG.CONNECTION_SPEED.VARIANCE;
+                },
+
+                /**
+                 * Generate a random node thickness within the configured range
+                 */
+                generateNodeThickness() {
+                    return CONFIG.NODE_THICKNESS.MIN + Math.random() * (CONFIG.NODE_THICKNESS.MAX - CONFIG.NODE_THICKNESS.MIN);
+                },
+
+                /**
+                 * Convert HSL to RGB color
+                 */
+                hslToRgb(hue, saturation = 1, lightness = 0.5) {
+                    const h = hue / 360;
+                    const s = saturation;
+                    const l = lightness;
+                    const c = (1 - Math.abs(2 * l - 1)) * s;
+                    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+                    const m = l - c / 2;
+                    
+                    let r, g, b;
+                    if (h < 1/6) { r = c; g = x; b = 0; }
+                    else if (h < 2/6) { r = x; g = c; b = 0; }
+                    else if (h < 3/6) { r = 0; g = c; b = x; }
+                    else if (h < 4/6) { r = 0; g = x; b = c; }
+                    else if (h < 5/6) { r = x; g = 0; b = c; }
+                    else { r = c; g = 0; b = x; }
+                    
+                    return ((Math.round((r + m) * 255) << 16) | 
+                           (Math.round((g + m) * 255) << 8) | 
+                           Math.round((b + m) * 255));
+                },
+
+                /**
+                 * Calculate responsive padding values
+                 */
+                calculatePadding(width) {
+                    return {
+                        x: Math.max(CONFIG.PADDING.MIN_X, width * CONFIG.PADDING.RATIO_X),
+                        y: Math.max(CONFIG.PADDING.MIN_Y, width * CONFIG.PADDING.RATIO_Y)
+                    };
+                },
+
+                /**
+                 * Calculate emoji positioning space
+                 */
+                calculateEmojiSpace(width) {
+                    return Math.max(CONFIG.EMOJI_SPACE.MIN, width * CONFIG.EMOJI_SPACE.RATIO);
+                },
+
+                /**
+                 * Get responsive configuration based on screen width
+                 */
+                getResponsiveConfig(width) {
+                    if (width < CONFIG.BREAKPOINTS.MOBILE) {
+                        return {
+                            layerCounts: CONFIG.LAYER_COUNTS.MOBILE,
+                            nodeRadius: CONFIG.NODE_RADIUS.MOBILE
+                        };
+                    } else if (width < CONFIG.BREAKPOINTS.TABLET) {
+                        return {
+                            layerCounts: CONFIG.LAYER_COUNTS.TABLET,
+                            nodeRadius: CONFIG.NODE_RADIUS.TABLET
+                        };
+                    } else {
+                        return {
+                            layerCounts: CONFIG.LAYER_COUNTS.DESKTOP,
+                            nodeRadius: CONFIG.NODE_RADIUS.DESKTOP
+                        };
+                    }
+                }
+            };
+            
+            // ============================================================================
+            // CORE FUNCTIONS
+            // ============================================================================
+            
+            /**
+             * Handle window resize and update animation parameters
+             */
             function resizeApp() {
                 width = window.innerWidth;
                 height = window.innerHeight;
                 
                 app.renderer.resize(width, height);
                 
-                // Adjust animation parameters based on screen size
-                if (width < 768) {
-                    layerNodeCounts = [8, 8, 8, 8, 1];
-                    nodeRadius = 1.5;
-                } else if (width < 1024) {
-                    layerNodeCounts = [12, 12, 12, 12, 1];
-                    nodeRadius = 1.8;
-                } else {
-                    layerNodeCounts = [16, 16, 16, 16, 1];
-                    nodeRadius = 2;
-                }
+                // Update responsive configuration
+                const responsiveConfig = Utils.getResponsiveConfig(width);
+                layerNodeCounts = responsiveConfig.layerCounts;
+                nodeRadius = responsiveConfig.nodeRadius;
                 
                 initNodes();
             }
 
+            // ============================================================================
+            // CLASSES
+            // ============================================================================
+            
+            /**
+             * Represents a neural network node with visual representation
+             */
             class PixiNode {
                 constructor(x, y) {
                     this.x = x;
                     this.y = y;
-                    this.thickness = 0.2 + Math.random() * 0.8;
+                    this.thickness = Utils.generateNodeThickness();
                     this.graphics = new PIXI.Graphics();
                     this.graphics.x = x;
                     this.graphics.y = y;
-                    this.draw();
-                    app.stage.addChild(this.graphics);
-                    // Move nodes to top layer
-                    app.stage.setChildIndex(this.graphics, app.stage.children.length - 1);
+                    this._createGraphics();
+                    this._addToStage();
                 }
 
-                draw() {
+                _createGraphics() {
                     this.graphics.clear();
-                    this.graphics.beginFill(0x333333);
+                    this.graphics.beginFill(CONFIG.NODE_COLOR);
                     this.graphics.drawCircle(0, 0, nodeRadius);
                     this.graphics.endFill();
                 }
+
+                _addToStage() {
+                    app.stage.addChild(this.graphics);
+                    // Ensure nodes are always on top
+                    this._moveToTop();
+                }
+
+                _moveToTop() {
+                    if (this.graphics && app.stage.children.includes(this.graphics)) {
+                        app.stage.setChildIndex(this.graphics, app.stage.children.length - 1);
+                    }
+                }
+
+                updateThickness() {
+                    this.thickness = Utils.generateNodeThickness();
+                }
+
+                redraw() {
+                    this._createGraphics();
+                }
+
+                moveToTop() {
+                    this._moveToTop();
+                }
             }
             
+            /**
+             * Represents the output node that displays animated emoji text
+             */
             class PixiTextNode {
                 constructor(x, y) {
                     this.x = x;
@@ -249,43 +420,68 @@
                     this.animationStartTime = performance.now();
                 }
 
-                draw(text) {
-                    if (currentWordIndex !== -1) {
-                        const elapsedTime = performance.now() - this.animationStartTime;
-                        let opacity;
-                        if (elapsedTime < 1000) {
-                            opacity = 1.0;
-                        } else {
-                            const fadeElapsedTime = elapsedTime - 1000;
-                            opacity = 1.0 - Math.min(1.0, fadeElapsedTime / 1000);
-                        }
-                        
-                        // Remove existing text sprite
-                        if (this.textSprite) {
-                            app.stage.removeChild(this.textSprite);
-                        }
-                        
-                        // Create new text sprite with padding
-                        const fontSize = 16; // 1rem = 16px
-                        const padding = 8; // 0.5rem padding around emoji
-                        const style = new PIXI.TextStyle({
-                            fontFamily: 'Courier New, monospace',
-                            fontSize: fontSize,
-                            fill: 0x333333,
-                            alpha: opacity,
-                            padding: padding
-                        });
-                        
-                        this.textSprite = new PIXI.Text(text, style);
-                        this.textSprite.x = this.x + Math.max(8, width * 0.01);
-                        this.textSprite.y = this.y - fontSize * 0.5; // Center vertically relative to node
-                        this.textSprite.anchor.set(0, 0);
-                        
-                        app.stage.addChild(this.textSprite);
+                _calculateOpacity() {
+                    if (currentWordIndex === -1) return 0;
+                    
+                    const elapsedTime = performance.now() - this.animationStartTime;
+                    if (elapsedTime < CONFIG.EMOJI_DISPLAY_TIME) {
+                        return 1.0;
+                    } else {
+                        const fadeElapsedTime = elapsedTime - CONFIG.EMOJI_DISPLAY_TIME;
+                        return 1.0 - Math.min(1.0, fadeElapsedTime / CONFIG.EMOJI_FADE_TIME);
                     }
+                }
+
+                _createTextStyle(opacity) {
+                    return new PIXI.TextStyle({
+                        fontFamily: 'Courier New, monospace',
+                        fontSize: CONFIG.EMOJI_FONT_SIZE,
+                        fill: CONFIG.NODE_COLOR,
+                        alpha: opacity,
+                        padding: CONFIG.EMOJI_PADDING
+                    });
+                }
+
+                _positionText() {
+                    if (!this.textSprite) return;
+                    
+                    this.textSprite.x = this.x + Math.max(8, width * 0.01);
+                    this.textSprite.y = this.y - CONFIG.EMOJI_FONT_SIZE * 0.5;
+                    this.textSprite.anchor.set(0, 0);
+                }
+
+                _removeExistingSprite() {
+                    if (this.textSprite) {
+                        app.stage.removeChild(this.textSprite);
+                        this.textSprite = null;
+                    }
+                }
+
+                draw(text) {
+                    const opacity = this._calculateOpacity();
+                    if (opacity <= 0) return;
+                    
+                    this._removeExistingSprite();
+                    
+                    const style = this._createTextStyle(opacity);
+                    this.textSprite = new PIXI.Text(text, style);
+                    this._positionText();
+                    
+                    app.stage.addChild(this.textSprite);
+                }
+
+                cleanup() {
+                    this._removeExistingSprite();
                 }
             }
 
+            // ============================================================================
+            // INITIALIZATION FUNCTIONS
+            // ============================================================================
+            
+            /**
+             * Initialize the neural network structure and connections
+             */
             function initNodes() {
                 // Clear existing graphics
                 app.stage.removeChildren();
@@ -293,78 +489,82 @@
                 layers = [];
                 connectionAnimations = [];
                 
-                // Calculate responsive padding
-                const paddingX = Math.max(32, width * 0.05);
-                const paddingY = Math.max(16, width * 0.02);
-                
-                // Calculate spacing for layers
-                const emojiSpace = Math.max(60, width * 0.1);
-                const totalWidthForLayers = width - paddingX - emojiSpace;
+                // Calculate layout dimensions
+                const padding = Utils.calculatePadding(width);
+                const emojiSpace = Utils.calculateEmojiSpace(width);
+                const totalWidthForLayers = width - padding.x - emojiSpace;
                 const layerSpacing = totalWidthForLayers / (layerNodeCounts.length - 1);
                 
-                // Create nodes for all layers except the last (output) one
+                // Create neural network layers
+                createNeuralLayers(padding, layerSpacing);
+                
+                // Create output emoji node
+                createOutputNode(emojiSpace);
+                
+                // Create all connections
+                createConnections();
+            }
+
+            function createNeuralLayers(padding, layerSpacing) {
                 for (let i = 0; i < layerNodeCounts.length - 1; i++) {
                     const layer = [];
                     const nodeCount = layerNodeCounts[i];
-                    const availableHeight = height - 2 * paddingY;
+                    const availableHeight = height - 2 * padding.y;
                     const nodeSpacing = availableHeight / (nodeCount + 1);
-                    const x = paddingX + i * layerSpacing;
+                    const x = padding.x + i * layerSpacing;
 
                     for (let j = 0; j < nodeCount; j++) {
-                        const y = paddingY + (j + 1) * nodeSpacing;
+                        const y = padding.y + (j + 1) * nodeSpacing;
                         layer.push(new PixiNode(x, y));
                     }
                     layers.push(layer);
                 }
+            }
 
-                // Create the single output node
-                const finalX = paddingX + (layerNodeCounts.length - 2) * layerSpacing;
-                const emojiX = width - emojiSpace + (emojiSpace * 0.3);
+            function createOutputNode(emojiSpace) {
+                const emojiX = width - emojiSpace + (emojiSpace * CONFIG.EMOJI_SPACE.POSITION);
                 outputNode = new PixiTextNode(emojiX, height / 2);
+            }
 
-                // Create connections between layers
+            function createConnections() {
+                // Create connections between adjacent layers
                 for (let i = 0; i < layers.length - 1; i++) {
-                    const connections = [];
-                    const currentLayer = layers[i];
-                    const nextLayer = layers[i + 1];
-
-                    currentLayer.forEach(nodeA => {
-                        nextLayer.forEach(nodeB => {
-                            connections.push({ 
-                                from: nodeA, 
-                                to: nodeB, 
-                                progress: 0, 
-                                speed: 0.02 + Math.random() * 0.008,
-                                graphics: new PIXI.Graphics()
-                            });
-                        });
-                    });
+                    const connections = createLayerConnections(layers[i], layers[i + 1]);
                     connectionAnimations.push(connections);
                 }
 
-                // Create connections for the last layer to the single output node
-                const lastLayerConnections = [];
-                const lastHiddenLayer = layers[layers.length - 1];
-                lastHiddenLayer.forEach(node => {
-                    lastLayerConnections.push({ 
-                        from: node, 
-                        to: outputNode, 
-                        progress: 0, 
-                        speed: 0.02 + Math.random() * 0.008,
-                        graphics: new PIXI.Graphics()
-                    });
-                });
+                // Create connections from last layer to output node
+                const lastLayerConnections = createLayerConnections(layers[layers.length - 1], [outputNode]);
                 connectionAnimations.push(lastLayerConnections);
             }
+
+            function createLayerConnections(fromLayer, toLayer) {
+                const connections = [];
+                fromLayer.forEach(nodeA => {
+                    toLayer.forEach(nodeB => {
+                        connections.push({
+                            from: nodeA,
+                            to: nodeB,
+                            progress: 0,
+                            speed: Utils.generateConnectionSpeed(),
+                            graphics: new PIXI.Graphics()
+                        });
+                    });
+                });
+                return connections;
+            }
             
+            // ============================================================================
+            // RENDERING FUNCTIONS
+            // ============================================================================
+            
+            /**
+             * Ensure all nodes are rendered above connection lines
+             */
             function moveNodesToTop() {
                 // Ensure all nodes are rendered on top of connections
                 layers.forEach(layer => {
-                    layer.forEach(node => {
-                        if (node.graphics && app.stage.children.includes(node.graphics)) {
-                            app.stage.setChildIndex(node.graphics, app.stage.children.length - 1);
-                        }
-                    });
+                    layer.forEach(node => node.moveToTop());
                 });
             }
 
@@ -372,56 +572,11 @@
                 // Draw animated layers (the active path)
                 for (let i = 0; i < connectionAnimations.length; i++) {
                     const layerConnections = connectionAnimations[i];
-                    
-                    let opacity = 0;
-                    if (i < currentActiveLayerIndex) {
-                        opacity = 1;
-                    } else if (i === currentActiveLayerIndex) {
-                        opacity = layerConnections[0].progress;
-                    }
+                    const opacity = calculateLayerOpacity(i, layerConnections);
                     
                     if (opacity > 0) {
                         layerConnections.forEach(conn => {
-                            const dx = conn.to.x - conn.from.x;
-                            const dy = conn.to.y - conn.from.y;
-                            
-                            const endX = conn.from.x + dx * conn.progress;
-                            const endY = conn.from.y + dy * conn.progress;
-                            
-                            // Map thickness to a hue value (240=blue to 0=red)
-                            const hue = 240 - ((conn.from.thickness - 0.2) / 0.8) * 240;
-                            
-                            // Clear and redraw connection
-                            conn.graphics.clear();
-                            
-                            // Convert HSL to RGB manually
-                            const h = hue / 360;
-                            const s = 1;
-                            const l = 0.5;
-                            const c = (1 - Math.abs(2 * l - 1)) * s;
-                            const x = c * (1 - Math.abs((h * 6) % 2 - 1));
-                            const m = l - c / 2;
-                            
-                            let r, g, b;
-                            if (h < 1/6) { r = c; g = x; b = 0; }
-                            else if (h < 2/6) { r = x; g = c; b = 0; }
-                            else if (h < 3/6) { r = 0; g = c; b = x; }
-                            else if (h < 4/6) { r = 0; g = x; b = c; }
-                            else if (h < 5/6) { r = x; g = 0; b = c; }
-                            else { r = c; g = 0; b = x; }
-                            
-                            const color = ((Math.round((r + m) * 255) << 16) | 
-                                          (Math.round((g + m) * 255) << 8) | 
-                                          Math.round((b + m) * 255));
-                            
-                            conn.graphics.lineStyle(conn.from.thickness, color, opacity);
-                            conn.graphics.moveTo(conn.from.x, conn.from.y);
-                            conn.graphics.lineTo(endX, endY);
-                            
-                            // Add to stage if not already added
-                            if (!app.stage.children.includes(conn.graphics)) {
-                                app.stage.addChild(conn.graphics);
-                            }
+                            drawSingleConnection(conn, opacity);
                         });
                     }
                 }
@@ -429,78 +584,164 @@
                 // Ensure nodes are always on top
                 moveNodesToTop();
             }
-            
-            function animate() {
-                // Draw connections
-                drawConnections();
-                
-                // Draw emoji if active
-                if (outputNode && currentWordIndex !== -1) {
-                    outputNode.draw(outputWords[currentWordIndex]);
+
+            function calculateLayerOpacity(layerIndex, layerConnections) {
+                if (layerIndex < currentActiveLayerIndex) {
+                    return 1;
+                } else if (layerIndex === currentActiveLayerIndex) {
+                    return layerConnections[0].progress;
                 }
+                return 0;
+            }
+
+            function drawSingleConnection(conn, opacity) {
+                const dx = conn.to.x - conn.from.x;
+                const dy = conn.to.y - conn.from.y;
+                const endX = conn.from.x + dx * conn.progress;
+                const endY = conn.from.y + dy * conn.progress;
                 
-                // Check for pause state
-                if (Date.now() < pauseUntil) {
+                // Calculate color based on thickness
+                const normalizedThickness = (conn.from.thickness - CONFIG.NODE_THICKNESS.MIN) / 
+                                          (CONFIG.NODE_THICKNESS.MAX - CONFIG.NODE_THICKNESS.MIN);
+                const hue = CONFIG.HUE_RANGE - (normalizedThickness * CONFIG.HUE_RANGE);
+                const color = Utils.hslToRgb(hue);
+                
+                // Draw the connection
+                conn.graphics.clear();
+                conn.graphics.lineStyle(conn.from.thickness, color, opacity);
+                conn.graphics.moveTo(conn.from.x, conn.from.y);
+                conn.graphics.lineTo(endX, endY);
+                
+                // Add to stage if not already added
+                if (!app.stage.children.includes(conn.graphics)) {
+                    app.stage.addChild(conn.graphics);
+                }
+            }
+            
+            // ============================================================================
+            // ANIMATION CONTROL FUNCTIONS
+            // ============================================================================
+            
+            /**
+             * Main animation loop - coordinates all animation activities
+             */
+            function animate() {
+                // Render current frame
+                renderFrame();
+                
+                // Handle pause state
+                if (isPaused()) {
                     requestAnimationFrame(animate);
                     return;
                 }
                 
-                // If a pause just ended, reset the animation and change the word
+                // Handle animation reset
                 if (hasAnimationCompleted) {
-                    hasAnimationCompleted = false;
-                    currentActiveLayerIndex = 0;
-
-                    // Clear all connection graphics from the stage
-                    connectionAnimations.forEach(layerConnections => {
-                        layerConnections.forEach(conn => {
-                            if (conn.graphics && app.stage.children.includes(conn.graphics)) {
-                                app.stage.removeChild(conn.graphics);
-                            }
-                        });
-                    });
-
-                    // Reset and re-randomize thickness and speed for all nodes and connections
-                    layers.forEach(layer => {
-                        layer.forEach(node => {
-                            node.thickness = 0.2 + Math.random() * 0.8;
-                        });
-                    });
-
-                    connectionAnimations.forEach(layerConnections => {
-                        layerConnections.forEach(conn => {
-                            conn.progress = 0;
-                            conn.speed = 0.02 + Math.random() * 0.008;
-                        });
-                    });
+                    resetAnimation();
                 }
-
-                let isLayerComplete = true;
-                if (currentActiveLayerIndex < connectionAnimations.length) {
-                    connectionAnimations[currentActiveLayerIndex].forEach(conn => {
-                        conn.progress = Math.min(1, conn.progress + conn.speed);
-                        if (conn.progress < 1) {
-                            isLayerComplete = false;
-                        }
-                    });
-                } else {
-                    isLayerComplete = true;
-                }
-
-                if (isLayerComplete) {
-                    if (currentActiveLayerIndex >= connectionAnimations.length - 1) {
-                         // Animation complete, set flags for pause
-                         currentWordIndex = (currentWordIndex + 1) % outputWords.length;
-                         outputNode.startFade();
-                         pauseUntil = Date.now() + PAUSE_DURATION;
-                         hasAnimationCompleted = true;
-                    } else {
-                         currentActiveLayerIndex++;
-                    }
-                }
+                
+                // Update animation progress
+                updateAnimationProgress();
                 
                 requestAnimationFrame(animate);
             }
 
+            function renderFrame() {
+                drawConnections();
+                
+                if (outputNode && currentWordIndex !== -1) {
+                    outputNode.draw(EMOJI_LIST[currentWordIndex]);
+                }
+            }
+
+            function isPaused() {
+                return Date.now() < pauseUntil;
+            }
+
+            function resetAnimation() {
+                hasAnimationCompleted = false;
+                currentActiveLayerIndex = 0;
+                
+                clearAllConnections();
+                randomizeNodeProperties();
+                resetConnectionProgress();
+            }
+
+            function clearAllConnections() {
+                connectionAnimations.forEach(layerConnections => {
+                    layerConnections.forEach(conn => {
+                        if (conn.graphics && app.stage.children.includes(conn.graphics)) {
+                            app.stage.removeChild(conn.graphics);
+                        }
+                    });
+                });
+            }
+
+            function randomizeNodeProperties() {
+                layers.forEach(layer => {
+                    layer.forEach(node => {
+                        node.updateThickness();
+                    });
+                });
+            }
+
+            function resetConnectionProgress() {
+                connectionAnimations.forEach(layerConnections => {
+                    layerConnections.forEach(conn => {
+                        conn.progress = 0;
+                        conn.speed = Utils.generateConnectionSpeed();
+                    });
+                });
+            }
+
+            function updateAnimationProgress() {
+                const isLayerComplete = updateCurrentLayer();
+                
+                if (isLayerComplete) {
+                    if (isAnimationComplete()) {
+                        startPausePhase();
+                    } else {
+                        advanceToNextLayer();
+                    }
+                }
+            }
+
+            function updateCurrentLayer() {
+                if (currentActiveLayerIndex >= connectionAnimations.length) {
+                    return true;
+                }
+                
+                let isComplete = true;
+                connectionAnimations[currentActiveLayerIndex].forEach(conn => {
+                    conn.progress = Math.min(1, conn.progress + conn.speed);
+                    if (conn.progress < 1) {
+                        isComplete = false;
+                    }
+                });
+                
+                return isComplete;
+            }
+
+            function isAnimationComplete() {
+                return currentActiveLayerIndex >= connectionAnimations.length - 1;
+            }
+
+            function startPausePhase() {
+                currentWordIndex = (currentWordIndex + 1) % EMOJI_LIST.length;
+                outputNode.startFade();
+                pauseUntil = Date.now() + CONFIG.PAUSE_DURATION;
+                hasAnimationCompleted = true;
+            }
+
+            function advanceToNextLayer() {
+                currentActiveLayerIndex++;
+            }
+
+            // ============================================================================
+            // INITIALIZATION AND EVENT HANDLERS
+            // ============================================================================
+            
+            // Set up event handlers and start the animation
             window.addEventListener('resize', resizeApp);
             resizeApp();
             animate();

@@ -264,7 +264,7 @@
                         }
                         
                         // Create new text sprite
-                        const fontSize = Math.max(24, Math.min(40, width * 0.03));
+                        const fontSize = 16; // 1rem = 16px
                         const style = new PIXI.TextStyle({
                             fontFamily: 'Courier New, monospace',
                             fontSize: fontSize,
@@ -274,7 +274,7 @@
                         
                         this.textSprite = new PIXI.Text(text, style);
                         this.textSprite.x = this.x + Math.max(8, width * 0.01);
-                        this.textSprite.y = this.y - fontSize * 0.3 - 4; // 0.25rem = 4px
+                        this.textSprite.y = this.y - fontSize * 0.5; // Center vertically
                         this.textSprite.anchor.set(0, 0);
                         
                         app.stage.addChild(this.textSprite);

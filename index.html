@@ -193,8 +193,6 @@
             let pauseUntil = 0;
             const PAUSE_DURATION = 750;
             let hasAnimationCompleted = false;
-            let layerCompletionTimes = []; // Track when each layer completed
-            let layerUndrawProgress = []; // Track undraw progress for each layer
             
             function resizeApp() {
                 width = window.innerWidth;
@@ -371,27 +369,14 @@
             }
 
             function drawConnections() {
-                // Update undraw progress for completed layers (including the final layer when animation is complete)
-                const layersToUndraw = hasAnimationCompleted ? connectionAnimations.length : currentActiveLayerIndex;
-                for (let i = 0; i < layersToUndraw; i++) {
-                    if (layerUndrawProgress[i] === undefined) {
-                        layerUndrawProgress[i] = 0;
-                    }
-                    // Use the same speed as the original drawing
-                    const avgSpeed = connectionAnimations[i].reduce((sum, conn) => sum + conn.speed, 0) / connectionAnimations[i].length;
-                    layerUndrawProgress[i] = Math.min(1, layerUndrawProgress[i] + avgSpeed);
-                }
-                
                 // Draw animated layers (the active path)
                 for (let i = 0; i < connectionAnimations.length; i++) {
                     const layerConnections = connectionAnimations[i];
                     
                     let opacity = 0;
-                    if (i < currentActiveLayerIndex || (hasAnimationCompleted && i < connectionAnimations.length)) {
-                        // Use speed-based undrawing for completed layers (including final layer when animation is complete)
-                        const undrawProgress = layerUndrawProgress[i] || 0;
-                        opacity = Math.max(0, 1 - undrawProgress);
-                    } else if (i === currentActiveLayerIndex && !hasAnimationCompleted) {
+                    if (i < currentActiveLayerIndex) {
+                        opacity = 1;
+                    } else if (i === currentActiveLayerIndex) {
                         opacity = layerConnections[0].progress;
                     }
                     
@@ -400,17 +385,8 @@
                             const dx = conn.to.x - conn.from.x;
                             const dy = conn.to.y - conn.from.y;
                             
-                            let startX = conn.from.x;
-                            let startY = conn.from.y;
-                            let endX = conn.from.x + dx * conn.progress;
-                            let endY = conn.from.y + dy * conn.progress;
-                            
-                            // If this is a completed layer that's undrawing, move the start point
-                            if (i < currentActiveLayerIndex || (hasAnimationCompleted && i < connectionAnimations.length)) {
-                                const unDrawProgress = layerUndrawProgress[i] || 0;
-                                startX = conn.from.x + dx * unDrawProgress;
-                                startY = conn.from.y + dy * unDrawProgress;
-                            }
+                            const endX = conn.from.x + dx * conn.progress;
+                            const endY = conn.from.y + dy * conn.progress;
                             
                             // Map thickness to a hue value (240=blue to 0=red)
                             const hue = 240 - ((conn.from.thickness - 0.2) / 0.8) * 240;
@@ -439,7 +415,7 @@
                                           Math.round((b + m) * 255));
                             
                             conn.graphics.lineStyle(conn.from.thickness, color, opacity);
-                            conn.graphics.moveTo(startX, startY);
+                            conn.graphics.moveTo(conn.from.x, conn.from.y);
                             conn.graphics.lineTo(endX, endY);
                             
                             // Add to stage if not already added
@@ -473,8 +449,6 @@
                 if (hasAnimationCompleted) {
                     hasAnimationCompleted = false;
                     currentActiveLayerIndex = 0;
-                    layerCompletionTimes = []; // Reset completion times
-                    layerUndrawProgress = []; // Reset undraw progress
 
                     // Clear all connection graphics from the stage
                     connectionAnimations.forEach(layerConnections => {
@@ -513,9 +487,6 @@
                 }
 
                 if (isLayerComplete) {
-                    // Record completion time for the current layer
-                    layerCompletionTimes[currentActiveLayerIndex] = performance.now();
-                    
                     if (currentActiveLayerIndex >= connectionAnimations.length - 1) {
                          // Animation complete, set flags for pause
                          currentWordIndex = (currentWordIndex + 1) % outputWords.length;

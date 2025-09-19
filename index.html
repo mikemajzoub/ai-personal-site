@@ -431,6 +431,15 @@
                     hasAnimationCompleted = false;
                     currentActiveLayerIndex = 0;
 
+                    // Clear all connection graphics from the stage
+                    connectionAnimations.forEach(layerConnections => {
+                        layerConnections.forEach(conn => {
+                            if (conn.graphics && app.stage.children.includes(conn.graphics)) {
+                                app.stage.removeChild(conn.graphics);
+                            }
+                        });
+                    });
+
                     // Reset and re-randomize thickness and speed for all nodes and connections
                     layers.forEach(layer => {
                         layer.forEach(node => {

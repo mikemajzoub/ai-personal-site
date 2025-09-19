@@ -274,8 +274,8 @@
                         
                         this.textSprite = new PIXI.Text(text, style);
                         this.textSprite.x = this.x + Math.max(8, width * 0.01);
-                        this.textSprite.y = this.y;
-                        this.textSprite.anchor.set(0, 0.5);
+                        this.textSprite.y = this.y - fontSize * 0.3 - 4; // 0.25rem = 4px
+                        this.textSprite.anchor.set(0, 0);
                         
                         app.stage.addChild(this.textSprite);
                     }

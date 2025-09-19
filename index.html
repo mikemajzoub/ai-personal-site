@@ -225,6 +225,8 @@
                     this.graphics.y = y;
                     this.draw();
                     app.stage.addChild(this.graphics);
+                    // Move nodes to top layer
+                    app.stage.setChildIndex(this.graphics, app.stage.children.length - 1);
                 }
 
                 draw() {
@@ -355,6 +357,17 @@
                 connectionAnimations.push(lastLayerConnections);
             }
             
+            function moveNodesToTop() {
+                // Ensure all nodes are rendered on top of connections
+                layers.forEach(layer => {
+                    layer.forEach(node => {
+                        if (node.graphics && app.stage.children.includes(node.graphics)) {
+                            app.stage.setChildIndex(node.graphics, app.stage.children.length - 1);
+                        }
+                    });
+                });
+            }
+
             function drawConnections() {
                 // Draw animated layers (the active path)
                 for (let i = 0; i < connectionAnimations.length; i++) {
@@ -411,6 +424,9 @@
                         });
                     }
                 }
+                
+                // Ensure nodes are always on top
+                moveNodesToTop();
             }
             
             function animate() {

@@ -263,18 +263,20 @@
                             app.stage.removeChild(this.textSprite);
                         }
                         
-                        // Create new text sprite
+                        // Create new text sprite with padding
                         const fontSize = 16; // 1rem = 16px
+                        const padding = 8; // 0.5rem padding around emoji
                         const style = new PIXI.TextStyle({
                             fontFamily: 'Courier New, monospace',
                             fontSize: fontSize,
                             fill: 0x333333,
-                            alpha: opacity
+                            alpha: opacity,
+                            padding: padding
                         });
                         
                         this.textSprite = new PIXI.Text(text, style);
                         this.textSprite.x = this.x + Math.max(8, width * 0.01);
-                        this.textSprite.y = this.y - fontSize * 0.5; // Center vertically
+                        this.textSprite.y = this.y - fontSize * 0.5; // Center vertically relative to node
                         this.textSprite.anchor.set(0, 0);
                         
                         app.stage.addChild(this.textSprite);
